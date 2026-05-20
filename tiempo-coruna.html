@@ -211,19 +211,27 @@
       margin: 0 0 0.85rem;
       padding: 0.8rem 1.2rem;
       border-radius: 10px;
-      background: rgba(0,0,0,0.08);
+      background: rgba(255,255,255,0.92);
       font-size: 0.7rem;
-      letter-spacing: 0.1em;
+      font-weight: 700;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      color: rgba(26,43,74,0.6);
+      color: #0a0f18;
       text-align: center;
       min-height: 2.5rem;
       display: flex;
       align-items: center;
       justify-content: center;
       transition: all 0.5s;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      border: 1px solid rgba(10,15,24,0.12);
     }
-    body.apocalipsis .status { background: rgba(255,50,50,0.15); color: #ff8080; border: 1px solid rgba(255,50,50,0.3); }
+    body.apocalipsis .status {
+      background: rgba(20,10,15,0.9);
+      color: #ffb4b4;
+      border: 1px solid rgba(255,80,80,0.35);
+      box-shadow: 0 2px 16px rgba(255,50,50,0.15);
+    }
 
     /* ─── APOCALIPSIS OVERLAY ─── */
     #apocalipsis-overlay {
@@ -953,11 +961,21 @@
         state.lluvia = false; state.nubes = false; state.niebla = false;
 
       } else if (key === 'viento') {
-        state.sol = true;
-        state.lluvia = false; state.nubes = false; state.niebla = false;
+        if (state.lluvia) {
+          state.sol = false;
+          state.nubes = false;
+          state.niebla = false;
+        } else {
+          state.sol = true;
+          state.lluvia = false;
+          state.nubes = false;
+          state.niebla = false;
+        }
 
       } else if (key === 'lluvia') {
-        state.sol = false; state.viento = false;
+        state.sol = false;
+        state.nubes = false;
+        state.niebla = false;
 
       } else if (key === 'nubes') {
         state.lluvia = true;
@@ -986,7 +1004,7 @@
     tresdia: '⚠️ ALERTA MÁXIMA — APOCALIPSIS CLIMÁTICO INMINENTE',
     niebla:  'Niebla densa · Nubes · Lluvia — Día de interior',
     nubes:   'Nuestra verdadera realidad',
-    lluvia:  'Lluvia atlántica — Como siempre',
+    lluvia:  'Llueve de lado',
     sol:     'Sol y viento · La combinación coruñesa clásica',
     vientoSolo: 'Ya está aquí nuestro querido Nordés',
     solSolo: 'Sol de boquilla — aprovecha mientras dure',
@@ -1115,7 +1133,7 @@
       body.classList.add('sol');
     } else if (state.niebla)  { body.classList.add('niebla');  buildWindLines(); }
     else if (state.nubes)     { body.classList.add('nubes'); }
-    else if (state.lluvia)    { body.classList.add('lluvia'); }
+    else if (state.lluvia)    { body.classList.add('lluvia'); if (state.viento) buildWindLines(); }
     else if (state.sol && state.viento) { body.classList.add('sol'); buildWindLines(); }
     else if (state.viento)    { body.classList.add('viento'); buildWindLines(); }
     else if (state.sol)       { body.classList.add('sol'); }
