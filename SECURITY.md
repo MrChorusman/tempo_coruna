@@ -10,6 +10,7 @@ Página estática sin backend. Superficie de ataque reducida; estas son las medi
 - **Modal de confirmación**: construido con DOM (`textContent`), sin `innerHTML` con datos externos.
 - **Sin formularios** ni envío de datos a servidores propios.
 - **Audio e imágenes** servidos desde el mismo origen (GitHub Pages).
+- **Analítica opcional** vía `analytics-config.js` (proveedor externo); ver `ANALYTICS.md` y `privacidad.html`.
 
 ## Lo que no almacena la página
 

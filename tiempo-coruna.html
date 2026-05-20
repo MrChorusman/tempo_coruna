@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com https://plausible.io https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self'; connect-src 'self' https://cloudflareinsights.com https://plausible.io https://www.google-analytics.com https://region1.google-analytics.com https://analytics.google.com; base-uri 'self'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"/>
   <meta name="referrer" content="strict-origin-when-cross-origin"/>
   <meta name="description" content="Simulador visual y sonoro del tiempo en A Coruña — humor atlántico, apocalipsis incluido."/>
   <meta name="theme-color" content="#1a2b4a"/>
@@ -373,6 +373,59 @@
 
     #sound-toggle.sound-off { opacity: 0.55; }
 
+    .site-footer {
+      margin-top: 2rem;
+      text-align: center;
+      font-size: 0.65rem;
+      letter-spacing: 0.08em;
+      opacity: 0.55;
+    }
+    .site-footer a {
+      color: inherit;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    body.lluvia .site-footer,
+    body.niebla .site-footer,
+    body.apocalipsis .site-footer { color: rgba(220,230,255,0.7); }
+
+    #analytics-consent {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 980;
+      padding: 0.85rem 1rem;
+      background: rgba(13,27,42,0.92);
+      color: #e8f0ff;
+      font-size: 0.72rem;
+      line-height: 1.45;
+      gap: 0.75rem;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      border-top: 1px solid rgba(255,255,255,0.12);
+    }
+    #analytics-consent.visible { display: flex; }
+    #analytics-consent button {
+      font-family: 'DM Mono', monospace;
+      font-size: 0.72rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 8px;
+      cursor: pointer;
+      border: none;
+      background: #f5c842;
+      color: #1a2b4a;
+      font-weight: 700;
+    }
+    #analytics-consent button.decline {
+      background: transparent;
+      color: #e8f0ff;
+      border: 1px solid rgba(255,255,255,0.35);
+      font-weight: 400;
+    }
+
     /* ─── PRE-APOCALIPSIS ─── */
     #apocalypse-dim {
       position: fixed;
@@ -509,6 +562,17 @@
     <div class="status" id="status">Sin condiciones activas</div>
     <div class="dia-countdown" id="dia-countdown" aria-live="polite"></div>
   </div>
+
+  <footer class="site-footer">
+    <a href="privacidad.html">Privacidad</a>
+    · Chimeno Software
+  </footer>
+</div>
+
+<div id="analytics-consent" role="dialog" aria-label="Cookies de analítica">
+  <span>Usamos analítica anónima (Google) para medir visitas.</span>
+  <button type="button" id="analytics-accept">Aceptar</button>
+  <button type="button" class="decline" id="analytics-decline">Rechazar</button>
 </div>
 
 <script>
@@ -1320,5 +1384,7 @@
   applyRouteFromUrl();
   render();
 </script>
+<script src="analytics-config.js"></script>
+<script src="analytics.js" defer></script>
 </body>
 </html>

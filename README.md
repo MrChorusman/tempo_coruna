@@ -27,6 +27,7 @@ El estilo se adapta según la condición activa y ofrece efectos animados de fon
 - Preludio del apocalipsis: cuenta **1 DÍA → 2 DÍA → 3 DÍA**, fundido y temblor del panel.
 - Mensajes de estado que describen el clima actual.
 - Política de seguridad básica (CSP, rutas validadas): ver `SECURITY.md`.
+- **Estadísticas de visitas** configurables (Cloudflare, Plausible o GA4): ver `ANALYTICS.md`.
 
 ## Uso
 
