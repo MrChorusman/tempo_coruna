@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>El tiempo en A Coruña</title>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@300;700;900&family=DM+Mono:ital,wght@0,300;1,300&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --sky: #b8d4f0;
+      --deep: #1a2b4a;
+      --fog: #c8cdd6;
+      --rain: #4a6fa5;
+      --sun: #f5c842;
+      --wind: #a8e6cf;
+      --cloud: #e0e8f0;
+      --dark: #0d1b2a;
+      --text: #1a2b4a;
+      --accent: #f5c842;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      font-family: 'DM Mono', monospace;
+      background: var(--sky);
+      transition: background 1.2s ease;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* ─── WEATHER BACKGROUNDS ─── */
+    body.sol      { background: linear-gradient(160deg, #fde68a 0%, #f5c842 30%, #b8d4f0 80%); }
+    body.viento   { background: linear-gradient(160deg, #a8e6cf 0%, #b8d4f0 50%, #d4e8ff 100%); }
+    body.lluvia   { background: linear-gradient(160deg, #2c3e5a 0%, #4a6fa5 40%, #3d5a7a 100%); }
+    body.nubes    { background: linear-gradient(160deg, #8fa8c0 0%, #b8c8d8 50%, #d4dde8 100%); }
+    body.niebla   { background: linear-gradient(160deg, #9aa5b0 0%, #c8cdd6 60%, #dde0e4 100%); }
+    body.apocalipsis { background: #050a0f; }
+
+    /* ─── CANVAS DE PARTÍCULAS ─── */
+    #weather-canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ─── LAYOUT ─── */
+    .container {
+      position: relative;
+      z-index: 10;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      gap: 3rem;
+    }
+
+    /* ─── HEADER ─── */
+    .header {
+      text-align: center;
+    }
+
+    .header h1 {
+      font-family: 'Unbounded', sans-serif;
+      font-weight: 900;
+      font-size: clamp(2rem, 6vw, 5rem);
+      color: var(--deep);
+      letter-spacing: -0.02em;
+      line-height: 1;
+      text-shadow: 3px 3px 0 rgba(0,0,0,0.08);
+      transition: color 0.8s ease, text-shadow 0.8s ease;
+    }
+
+    body.lluvia .header h1,
+    body.niebla .header h1,
+    body.apocalipsis .header h1 { color: #e8f0ff; text-shadow: 0 0 30px rgba(100,150,255,0.4); }
+
+    .header .sub {
+      font-size: 0.75rem;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      color: rgba(26,43,74,0.5);
+      margin-top: 0.5rem;
+      transition: color 0.8s ease;
+    }
+    body.lluvia .header .sub,
+    body.niebla .header .sub,
+    body.apocalipsis .header .sub { color: rgba(200,220,255,0.5); }
+
+    /* ─── PANEL ─── */
+    .panel {
+      background: rgba(255,255,255,0.18);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 20px;
+      padding: 2.5rem 3rem;
+      width: 100%;
+      max-width: 500px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+      transition: background 0.8s ease, border-color 0.8s ease;
+    }
+
+    body.apocalipsis .panel {
+      background: rgba(5,15,30,0.7);
+      border-color: rgba(100,150,255,0.2);
+    }
+
+    /* ─── TOGGLES ─── */
+    .toggle-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+    }
+
+    .toggle-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.85rem 1.2rem;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.25);
+      border: 1.5px solid rgba(255,255,255,0.4);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      user-select: none;
+    }
+
+    .toggle-item:hover { transform: translateX(4px); background: rgba(255,255,255,0.35); }
+    .toggle-item.active { border-color: var(--accent); background: rgba(245,200,66,0.18); }
+    body.lluvia .toggle-item.active,
+    body.niebla .toggle-item.active { border-color: #6aa3e0; background: rgba(100,150,220,0.2); }
+    body.apocalipsis .toggle-item { background: rgba(10,20,40,0.5); border-color: rgba(80,120,200,0.3); color: #a0c0ff; }
+    body.apocalipsis .toggle-item.active { border-color: #4080ff; background: rgba(40,80,180,0.25); }
+
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.95rem;
+      font-weight: 400;
+      color: var(--text);
+      transition: color 0.5s;
+    }
+
+    body.lluvia .toggle-label,
+    body.niebla .toggle-label,
+    body.apocalipsis .toggle-label { color: #d0e4ff; }
+
+    .toggle-icon { font-size: 1.4rem; }
+
+    .toggle-switch {
+      width: 44px;
+      height: 24px;
+      background: rgba(0,0,0,0.15);
+      border-radius: 999px;
+      position: relative;
+      transition: background 0.3s;
+      flex-shrink: 0;
+    }
+    .toggle-item.active .toggle-switch { background: var(--accent); }
+    body.lluvia .toggle-item.active .toggle-switch,
+    body.niebla .toggle-item.active .toggle-switch { background: #6aa3e0; }
+    body.apocalipsis .toggle-item.active .toggle-switch { background: #4080ff; }
+
+    .toggle-switch::after {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      background: white;
+      border-radius: 50%;
+      top: 3px;
+      left: 3px;
+      transition: transform 0.3s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    }
+    .toggle-item.active .toggle-switch::after { transform: translateX(20px); }
+
+    /* ─── ESTADO ACTUAL ─── */
+    .status {
+      margin-top: 1.5rem;
+      padding: 0.8rem 1.2rem;
+      border-radius: 10px;
+      background: rgba(0,0,0,0.08);
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(26,43,74,0.6);
+      text-align: center;
+      min-height: 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.5s;
+    }
+    body.apocalipsis .status { background: rgba(255,50,50,0.15); color: #ff8080; border: 1px solid rgba(255,50,50,0.3); }
+
+    /* ─── APOCALIPSIS OVERLAY ─── */
+    #apocalipsis-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    body.apocalipsis #apocalipsis-overlay { display: block; }
+
+    .lightning {
+      position: absolute;
+      width: 2px;
+      background: linear-gradient(to bottom, transparent, white, transparent);
+      opacity: 0;
+      animation: lightning 4s infinite;
+    }
+
+    @keyframes lightning {
+      0%, 89%, 91%, 93%, 100% { opacity: 0; }
+      90%, 92% { opacity: 0.9; }
+    }
+
+    /* ─── SOL ─── */
+    #sol-glow {
+      display: none;
+      position: fixed;
+      top: -150px;
+      right: -100px;
+      width: 400px;
+      height: 400px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,210,50,0.8) 0%, rgba(255,180,30,0.3) 40%, transparent 70%);
+      pointer-events: none;
+      z-index: 1;
+      animation: solPulse 4s ease-in-out infinite;
+    }
+    body.sol #sol-glow, body.viento #sol-glow { display: block; }
+    @keyframes solPulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
+
+    /* ─── NIEBLA ─── */
+    #fog-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+    body.niebla #fog-overlay, body.apocalipsis #fog-overlay { display: block; }
+
+    .fog-layer {
+      position: absolute;
+      width: 200%;
+      height: 80px;
+      background: rgba(200,205,215,0.4);
+      filter: blur(20px);
+      border-radius: 50%;
+    }
+    .fog-layer:nth-child(1) { top: 30%; left: -50%; animation: fogMove 18s linear infinite; }
+    .fog-layer:nth-child(2) { top: 55%; left: -20%; animation: fogMove 25s linear infinite reverse; opacity: 0.6; }
+    .fog-layer:nth-child(3) { top: 75%; left: -10%; animation: fogMove 20s linear infinite; opacity: 0.4; height: 60px; }
+    body.apocalipsis .fog-layer { background: rgba(50,80,150,0.3); }
+
+    @keyframes fogMove { from{transform:translateX(0)} to{transform:translateX(50%)} }
+
+    /* ─── VIENTO (líneas) ─── */
+    #wind-lines {
+      display: none;
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 3;
+      overflow: hidden;
+    }
+    body.viento #wind-lines, body.sol #wind-lines, body.apocalipsis #wind-lines { display: block; }
+
+    .wind-line {
+      position: absolute;
+      height: 1.5px;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.6), transparent);
+      border-radius: 999px;
+      animation: windPass linear infinite;
+    }
+    body.apocalipsis .wind-line { background: linear-gradient(to right, transparent, rgba(100,150,255,0.5), transparent); }
+
+    @keyframes windPass {
+      from { transform: translateX(-100%); opacity: 0; }
+      10%  { opacity: 1; }
+      90%  { opacity: 1; }
+      to   { transform: translateX(110vw); opacity: 0; }
+    }
+    /* ─── GLITCH FLASH ─── */
+    #glitch-flash {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 900;
+      pointer-events: none;
+    }
+
+    /* Sólo se activa via clase JS */
+    #glitch-flash.active {
+      display: block;
+      animation: glitchSequence 2.4s forwards;
+    }
+
+    @keyframes glitchSequence {
+      /* Flash 1 — azul eléctrico tenue */
+      0%    { background: transparent; opacity: 0; }
+      4%    { background: rgba(80,140,255,0.35); opacity: 1; }
+      8%    { background: transparent; opacity: 0; }
+      /* Micro-glitch cromático */
+      10%   { background: rgba(255,60,80,0.12); opacity: 1; transform: skewX(-1deg); }
+      12%   { background: transparent; opacity: 0; transform: skewX(0); }
+      /* Flash 2 — más intenso */
+      18%   { background: rgba(80,140,255,0.5); opacity: 1; }
+      22%   { background: transparent; opacity: 0; }
+      /* Línea de scanline */
+      30%   { background: repeating-linear-gradient(
+                0deg,
+                transparent,
+                transparent 3px,
+                rgba(100,160,255,0.08) 3px,
+                rgba(100,160,255,0.08) 4px
+              ); opacity: 1; }
+      50%   { opacity: 0.4; }
+      60%   { background: transparent; opacity: 0; }
+      /* Flash 3 final — el más breve */
+      75%   { background: rgba(120,180,255,0.25); opacity: 1; transform: skewX(0.5deg); }
+      78%   { background: transparent; opacity: 0; transform: skewX(0); }
+      100%  { background: transparent; opacity: 0; display: none; }
+    }
+
+    /* Accesibilidad: sin movimiento */
+    @media (prefers-reduced-motion: reduce) {
+      #glitch-flash.active {
+        animation: glitchReduced 2s forwards;
+      }
+      @keyframes glitchReduced {
+        0%   { background: rgba(80,140,255,0.2); opacity: 1; }
+        20%  { background: rgba(80,140,255,0.2); opacity: 1; }
+        30%  { background: transparent; opacity: 0; }
+        100% { background: transparent; opacity: 0; }
+      }
+    }
+
+  </style>
+</head>
+<body>
+
+<div id="glitch-flash"></div>
+
+<!-- Botón accesibilidad -->
+<button id="anim-toggle" aria-label="Desactivar animaciones" title="Desactivar animaciones" style="
+  position:fixed; bottom:1.2rem; right:1.2rem; z-index:950;
+  background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3);
+  backdrop-filter:blur(8px); border-radius:50%; width:38px; height:38px;
+  cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center;
+  transition:background 0.2s; color:#fff;
+" title="Animaciones">✨</button>
+
+<canvas id="weather-canvas"></canvas>
+<div id="sol-glow"></div>
+
+<div id="fog-overlay">
+  <div class="fog-layer"></div>
+  <div class="fog-layer"></div>
+  <div class="fog-layer"></div>
+</div>
+
+<div id="wind-lines"></div>
+
+<div id="apocalipsis-overlay"></div>
+
+<div class="container">
+  <div class="header">
+    <h1>El tiempo<br>en A Coruña</h1>
+    <p class="sub">Servicio Meteo — Riazor &amp; alrededores</p>
+  </div>
+
+  <div class="panel">
+    <div class="toggle-list" id="toggle-list">
+
+      <div class="toggle-item" data-key="sol">
+        <span class="toggle-label"><span class="toggle-icon">☀️</span> Sol</span>
+        <div class="toggle-switch"></div>
+      </div>
+
+      <div class="toggle-item" data-key="viento">
+        <span class="toggle-label"><span class="toggle-icon">💨</span> Viento</span>
+        <div class="toggle-switch"></div>
+      </div>
+
+      <div class="toggle-item" data-key="lluvia">
+        <span class="toggle-label"><span class="toggle-icon">🌧️</span> Lluvia</span>
+        <div class="toggle-switch"></div>
+      </div>
+
+      <div class="toggle-item" data-key="nubes">
+        <span class="toggle-label"><span class="toggle-icon">☁️</span> Nubes</span>
+        <div class="toggle-switch"></div>
+      </div>
+
+      <div class="toggle-item" data-key="niebla">
+        <span class="toggle-label"><span class="toggle-icon">🌫️</span> Niebla</span>
+        <div class="toggle-switch"></div>
+      </div>
+
+      <div class="toggle-item" data-key="tresdia">
+        <span class="toggle-label"><span class="toggle-icon">🌈</span> 3 días de buen tiempo</span>
+        <div class="toggle-switch"></div>
+      </div>
+
+    </div>
+
+    <div class="status" id="status">Sin condiciones activas</div>
+  </div>
+</div>
+
+<script>
+  // ─── ESTADO ───
+  const state = { sol: false, viento: false, lluvia: false, nubes: false, niebla: false, tresdia: false };
+  let apocalipsisActive = false;
+  let apocalipsisTimers = [];
+
+
+
+  // ─── REGLAS: el toggle activado manda, deriva el resto ───
+  function applyRules(key, isActive) {
+    if (isActive) {
+      if (key === 'tresdia') {
+        state.sol = false; state.viento = false;
+        state.lluvia = false; state.nubes = false; state.niebla = false;
+
+      } else if (key === 'sol') {
+        state.viento = true;
+        state.lluvia = false; state.nubes = false; state.niebla = false;
+
+      } else if (key === 'viento') {
+        state.sol = true;
+        state.lluvia = false; state.nubes = false; state.niebla = false;
+
+      } else if (key === 'lluvia') {
+        state.sol = false; state.viento = false;
+
+      } else if (key === 'nubes') {
+        state.lluvia = true;
+        state.sol = false; state.viento = false;
+
+      } else if (key === 'niebla') {
+        state.nubes = true; state.lluvia = true;
+        state.sol = false; state.viento = false;
+      }
+    } else {
+      // Al desactivar viento: apaga sol, activa nubes y lluvia
+      if (key === 'viento') {
+        state.sol = false;
+        state.nubes = true;
+        state.lluvia = true;
+      }
+    }
+  }
+
+  // ─── MENSAJES ───
+  const messages = {
+    tresdia: '⚠️ ALERTA MÁXIMA — APOCALIPSIS CLIMÁTICO INMINENTE',
+    niebla:  'Niebla densa · Nubes · Lluvia — Día de interior',
+    nubes:   'Cubierto con lluvia — No te fíes',
+    lluvia:  'Lluvia atlántica — Como siempre',
+    sol:     'Sol y viento · La combinación coruñesa clásica',
+    viento:  'Viento con sol · El Cantábrico manda',
+    default: 'Sin condiciones activas'
+  };
+
+  // ─── CANVAS PARTÍCULAS ───
+  const canvas = document.getElementById('weather-canvas');
+  const ctx = canvas.getContext('2d');
+  let particles = [];
+  let animFrame;
+
+  function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  function spawnParticles() {
+    particles = [];
+    if (!state.lluvia && !apocalipsisActive) return;
+    const count = apocalipsisActive ? 300 : 120;
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        speed: 4 + Math.random() * (apocalipsisActive ? 10 : 4),
+        len: 10 + Math.random() * (apocalipsisActive ? 30 : 15),
+        angle: apocalipsisActive ? (Math.PI/2 + (Math.random()-0.5)*0.6) : (Math.PI/2 + 0.15),
+        alpha: 0.3 + Math.random() * 0.5
+      });
+    }
+  }
+
+  function drawParticles() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (!state.lluvia && !apocalipsisActive) return;
+
+    const color = apocalipsisActive ? 'rgba(80,130,255,' : 'rgba(100,150,220,';
+
+    particles.forEach(p => {
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(
+        p.x + Math.cos(p.angle) * p.len,
+        p.y + Math.sin(p.angle) * p.len
+      );
+      ctx.strokeStyle = color + p.alpha + ')';
+      ctx.lineWidth = apocalipsisActive ? 1.5 : 1;
+      ctx.stroke();
+
+      p.x += Math.cos(p.angle) * p.speed * 0.3;
+      p.y += p.speed;
+
+      if (p.y > canvas.height + 20) {
+        p.y = -20;
+        p.x = Math.random() * canvas.width;
+      }
+    });
+  }
+
+  function animate() {
+    drawParticles();
+    animFrame = requestAnimationFrame(animate);
+  }
+  animate();
+
+  // ─── VIENTO VISUAL ───
+  const windContainer = document.getElementById('wind-lines');
+  function buildWindLines() {
+    windContainer.innerHTML = '';
+    const count = apocalipsisActive ? 20 : 8;
+    for (let i = 0; i < count; i++) {
+      const line = document.createElement('div');
+      line.className = 'wind-line';
+      const top = Math.random() * 100;
+      const width = 80 + Math.random() * 200;
+      const dur = 1.5 + Math.random() * 2.5;
+      const delay = Math.random() * 3;
+      line.style.cssText = `top:${top}vh; width:${width}px; animation-duration:${dur}s; animation-delay:${delay}s;`;
+      windContainer.appendChild(line);
+    }
+  }
+
+  // ─── RELÁMPAGOS ───
+  const apocOverlay = document.getElementById('apocalipsis-overlay');
+  function buildLightning() {
+    apocOverlay.innerHTML = '';
+    for (let i = 0; i < 5; i++) {
+      const l = document.createElement('div');
+      l.className = 'lightning';
+      l.style.cssText = `left:${10+Math.random()*80}%; top:0; height:${30+Math.random()*40}vh; animation-delay:${Math.random()*4}s;`;
+      apocOverlay.appendChild(l);
+    }
+  }
+
+  // ─── RENDER ───
+  function render() {
+    const items = document.querySelectorAll('.toggle-item');
+    items.forEach(item => {
+      const key = item.dataset.key;
+      item.classList.toggle('active', !!state[key]);
+    });
+
+    // body class — apocalipsis vive por flag, no por state.tresdia
+    const body = document.body;
+    body.className = '';
+    if (apocalipsisActive) {
+      body.classList.add('apocalipsis');
+      buildLightning();
+      buildWindLines();
+    } else if (state.niebla)  { body.classList.add('niebla');  buildWindLines(); }
+    else if (state.nubes)     { body.classList.add('nubes'); }
+    else if (state.lluvia)    { body.classList.add('lluvia'); }
+    else if (state.sol && state.viento) { body.classList.add('sol'); buildWindLines(); }
+    else if (state.viento)    { body.classList.add('viento'); buildWindLines(); }
+    else if (state.sol)       { body.classList.add('sol'); }
+
+    // Partículas — intensidad máxima durante apocalipsis
+    spawnParticles();
+
+    // Status
+    const status = document.getElementById('status');
+    if (apocalipsisActive) status.textContent = messages.tresdia;
+    else if (state.niebla) status.textContent = messages.niebla;
+    else if (state.nubes)  status.textContent = messages.nubes;
+    else if (state.lluvia) status.textContent = messages.lluvia;
+    else if (state.sol && state.viento) status.textContent = messages.sol;
+    else if (state.viento) status.textContent = messages.viento;
+    else status.textContent = messages.default;
+  }
+
+  // ─── MODAL ───
+  function showModal(onConfirm, onCancel) {
+    const overlay = document.createElement('div');
+    overlay.id = 'modal-overlay';
+    overlay.style.cssText = `
+      position:fixed; inset:0; z-index:1000;
+      background:rgba(0,0,0,0.55); backdrop-filter:blur(6px);
+      display:flex; align-items:center; justify-content:center;
+    `;
+    overlay.innerHTML = `
+      <div style="
+        background:rgba(255,255,255,0.12); border:1.5px solid rgba(255,255,255,0.3);
+        backdrop-filter:blur(20px); border-radius:20px;
+        padding:2.5rem 2.5rem 2rem; max-width:380px; width:90%;
+        text-align:center; font-family:'DM Mono',monospace;
+        box-shadow:0 20px 60px rgba(0,0,0,0.4);
+      ">
+        <div style="font-size:2.5rem; margin-bottom:1rem;">⚠️</div>
+        <p style="color:#fff; font-size:1rem; line-height:1.6; margin-bottom:2rem;">
+          ¿Estás seguro de lo que estás pidiendo?
+        </p>
+        <div style="display:flex; gap:1rem; justify-content:center;">
+          <button id="modal-si" style="
+            flex:1; padding:0.75rem; border:none; border-radius:10px;
+            background:#e74c3c; color:#fff; font-family:'DM Mono',monospace;
+            font-size:0.9rem; font-weight:700; cursor:pointer; letter-spacing:0.1em;
+            transition:transform 0.15s;
+          ">SÍ</button>
+          <button id="modal-no" style="
+            flex:1; padding:0.75rem; border:1.5px solid rgba(255,255,255,0.4);
+            border-radius:10px; background:transparent; color:#fff;
+            font-family:'DM Mono',monospace; font-size:0.9rem; font-weight:700;
+            cursor:pointer; letter-spacing:0.1em; transition:transform 0.15s;
+          ">NO</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    document.getElementById('modal-si').onclick = () => { overlay.remove(); onConfirm(); };
+    document.getElementById('modal-no').onclick  = () => { overlay.remove(); onCancel(); };
+  }
+
+  // ─── GLITCH FLASH ───
+  let animationsEnabled = true;
+
+  document.getElementById('anim-toggle').addEventListener('click', () => {
+    animationsEnabled = !animationsEnabled;
+    const btn = document.getElementById('anim-toggle');
+    btn.textContent = animationsEnabled ? '✨' : '🚫';
+    btn.title = animationsEnabled ? 'Desactivar animaciones' : 'Activar animaciones';
+  });
+
+  function triggerGlitch() {
+    if (!animationsEnabled || !apocalipsisActive) return;
+    const el = document.getElementById('glitch-flash');
+    el.classList.remove('active');
+    // Forzar reflow para reiniciar animación
+    void el.offsetWidth;
+    el.classList.add('active');
+    // Limpia la clase al terminar para poder reutilizar
+    setTimeout(() => el.classList.remove('active'), 2500);
+  }
+
+  // ─── APOCALIPSIS SEQUENCE ───
+  function startApocalipsis() {
+    // Bloquea interacción inmediatamente
+    document.getElementById('toggle-list').style.pointerEvents = 'none';
+    document.getElementById('toggle-list').style.opacity = '0.5';
+
+    // Fase 1 (0-5s): buen tiempo — apocalipsisActive sigue false, se pinta sol+viento
+    state.sol = true; state.viento = true;
+    state.lluvia = false; state.nubes = false; state.niebla = false; state.tresdia = false;
+    render();
+
+    // Fase 2 (a los 5s): arranca el apocalipsis real
+    const t1 = setTimeout(() => {
+      apocalipsisActive = true;   // ← ahora sí
+      state.sol = false; state.viento = false;
+      state.lluvia = false; state.nubes = false; state.niebla = false;
+      render();
+      startChaosLoop();
+      startGlitchLoop();
+
+      // Auto-restaurar a los 15s de apocalipsis
+      const t2 = setTimeout(() => {
+        stopApocalipsis();
+        render();
+      }, 15000);
+      apocalipsisTimers.push(t2);
+
+    }, 5000);
+
+    apocalipsisTimers.push(t1);
+  }
+
+  function startGlitchLoop() {
+    function scheduleNext() {
+      if (!apocalipsisActive) return;
+      const t = setTimeout(() => {
+        triggerGlitch();
+        scheduleNext();
+      }, 5000);
+      apocalipsisTimers.push(t);
+    }
+    // Primer glitch inmediato al arrancar el apocalipsis
+    triggerGlitch();
+    scheduleNext();
+  }
+
+  function startChaosLoop() {
+    // SOL permanece desactivado para siempre
+    // Cicla viento/lluvia/nubes/niebla aleatoriamente cada ~1.5s
+    const chaosKeys = ['viento', 'lluvia', 'nubes', 'niebla'];
+    let step = 0;
+
+    function chaosStep() {
+      if (!apocalipsisActive) return;
+
+      // Desactiva todo excepto tresdia
+      state.viento = false; state.lluvia = false;
+      state.nubes = false; state.niebla = false; state.sol = false;
+
+      // Activa 1-2 aleatorios
+      const shuffled = chaosKeys.sort(() => Math.random() - 0.5);
+      const pick = 1 + Math.round(Math.random());
+      for (let i = 0; i < pick; i++) state[shuffled[i]] = true;
+
+      render();
+
+      const delay = 800 + Math.random() * 1200;
+      const t = setTimeout(chaosStep, delay);
+      apocalipsisTimers.push(t);
+    }
+
+    chaosStep();
+  }
+
+  function stopApocalipsis() {
+    apocalipsisActive = false;
+    apocalipsisTimers.forEach(clearTimeout);
+    apocalipsisTimers = [];
+    // Limpiar glitch si estaba activo
+    const glitch = document.getElementById('glitch-flash');
+    glitch.classList.remove('active');
+    // Reset estado completo
+    state.sol = false; state.viento = false;
+    state.lluvia = false; state.nubes = false;
+    state.niebla = false; state.tresdia = false;
+    // Restaurar interacción
+    document.getElementById('toggle-list').style.pointerEvents = '';
+    document.getElementById('toggle-list').style.opacity = '';
+  }
+
+  // ─── EVENTOS ───
+  document.getElementById('toggle-list').addEventListener('click', e => {
+    const item = e.target.closest('.toggle-item');
+    if (!item) return;
+    const key = item.dataset.key;
+
+    if (key === 'tresdia') {
+      if (!state.tresdia) {
+        // Mostrar modal antes de activar
+        showModal(
+          () => startApocalipsis(),  // SÍ
+          () => { state.tresdia = false; render(); } // NO: estado limpio
+        );
+        return;
+      } else {
+        // Desactivar apocalipsis
+        stopApocalipsis();
+        state.tresdia = false;
+        state.sol = false; state.viento = false;
+        state.lluvia = false; state.nubes = false; state.niebla = false;
+        render();
+        return;
+      }
+    }
+
+    state[key] = !state[key];
+    applyRules(key, state[key]);
+    render();
+  });
+
+  render();
+</script>
+</body>
+</html>
