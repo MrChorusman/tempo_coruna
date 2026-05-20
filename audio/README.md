@@ -14,3 +14,5 @@ Archivos usados por `tiempo-coruna.html`:
 Todos los bucles se mezclan según el estado de los interruptores. El trueno no hace bucle: suena **una sola vez** al activar la lluvia (o al entrar en el apocalipsis).
 
 En **móvil** se usa `<audio>` HTML (corte inmediato al cambiar). En escritorio, Web Audio si el navegador lo permite. Hace falta **un toque** en la página para desbloquear el audio (iOS/Android).
+
+Los MP3/M4A del repositorio están **optimizados** (~72 kbps mono en MP3, AAC ~64 kbps en `apocalip.m4a`) para cargar más rápido en móvil.

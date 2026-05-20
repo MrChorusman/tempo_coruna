@@ -1,1 +1,4 @@
 .DS_Store
+og-image.png
+audio/*.opt.*
+audio/*.src.bak

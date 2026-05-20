@@ -1,11 +1,22 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta http-equiv="refresh" content="0; url=tiempo-coruna.html" />
-  <title>Redirigiendo a El tiempo en A Coruña</title>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>El tiempo en A Coruña</title>
+  <link rel="canonical" href="https://mrchorusman.github.io/tempo_coruna/"/>
+  <script>
+    (function () {
+      var slug = (location.hash || '').replace(/^#\/?/, '');
+      var m = location.pathname.match(/\/(sol|viento|lluvia|nubes|niebla|apocalipsis|3-dias)\/?$/i);
+      if (m && m[1]) slug = m[1].toLowerCase();
+      var q = location.search || '';
+      location.replace('tiempo-coruna.html' + (slug ? '#/' + encodeURIComponent(slug) : '') + q);
+    })();
+  </script>
+  <meta http-equiv="refresh" content="0;url=tiempo-coruna.html"/>
 </head>
 <body>
-  <p>Si no te redirige automáticamente, haz clic en <a href="tiempo-coruna.html">tiempo-coruna.html</a>.</p>
+  <p><a href="tiempo-coruna.html">El tiempo en A Coruña</a></p>
 </body>
 </html>
