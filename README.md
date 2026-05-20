@@ -22,6 +22,7 @@ El estilo se adapta según la condición activa y ofrece efectos animados de fon
 - Animaciones de partículas para lluvia y efecto de viento.
 - Modo especial `3 días de buen tiempo` que inicia una secuencia apocalíptica con relámpagos y glitch visual.
 - Botón de accesibilidad para desactivar animaciones.
+- **Sonido ambiental por capas** con archivos en `audio/` (gaviotas, viento, lluvia, truenos, tormenta y pista de apocalipsis).
 - Mensajes de estado que describen el clima actual.
 
 ## Uso
@@ -33,9 +34,12 @@ El estilo se adapta según la condición activa y ofrece efectos animados de fon
 ## Archivo principal
 
 - `tiempo-coruna.html`: documento HTML autosuficiente con todo el CSS y JavaScript embebido.
+- `audio/`: pistas MP3/M4A (gaviotas, viento, lluvia, trueno, tormenta, apocalip). Ver `audio/README.md`.
 
 ## Notas
 
 - No requiere servidor ni instalación adicional.
 - Funciona directamente desde el sistema de archivos o desde cualquier servidor estático.
+- El audio se sirve desde la carpeta `audio/` junto a la página (mejor abrir con un servidor estático local si el navegador bloquea rutas relativas).
+- Con `prefers-reduced-motion: reduce` el sonido arranca desactivado; puedes activarlo con el botón 🔊.
 - El contenido es principalmente una demostración visual y de interacción, no una aplicación meteorológica real.

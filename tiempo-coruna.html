@@ -346,6 +346,8 @@
       }
     }
 
+    #sound-toggle.sound-off { opacity: 0.55; }
+
   </style>
 </head>
 <body>
@@ -353,13 +355,20 @@
 <div id="glitch-flash"></div>
 
 <!-- Botón accesibilidad -->
+<button id="sound-toggle" type="button" aria-label="Silenciar sonido ambiental" title="Sonido ambiental activo" style="
+  position:fixed; bottom:1.2rem; right:4.5rem; z-index:950;
+  background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3);
+  backdrop-filter:blur(8px); border-radius:50%; width:38px; height:38px;
+  cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center;
+  transition:background 0.2s, opacity 0.2s; color:#fff;
+">🔊</button>
 <button id="anim-toggle" aria-label="Desactivar animaciones" title="Desactivar animaciones" style="
   position:fixed; bottom:1.2rem; right:1.2rem; z-index:950;
   background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.3);
   backdrop-filter:blur(8px); border-radius:50%; width:38px; height:38px;
   cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center;
   transition:background 0.2s; color:#fff;
-" title="Animaciones">✨</button>
+">✨</button>
 
 <canvas id="weather-canvas"></canvas>
 <div id="sol-glow"></div>
@@ -425,7 +434,217 @@
   let apocalipsisActive = false;
   let apocalipsisTimers = [];
 
+  // ─── AUDIO (archivos en audio/ — ver audio/README.md) ───
+  let soundEnabled = true;
+  try {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      soundEnabled = false;
+    }
+  } catch (_) {}
 
+  const WeatherAudio = (() => {
+    const PATHS = {
+      gaviotas: 'audio/gaviotas.mp3',
+      viento: 'audio/viento.mp3',
+      lluvia: 'audio/lluvia.mp3',
+      trueno: 'audio/trueno.mp3',
+      tormenta: 'audio/tormenta.mp3',
+      apocalip: 'audio/apocalip.m4a'
+    };
+    const LEVELS = {
+      gaviotas: 0.72,
+      viento: 0.62,
+      lluvia: 0.65,
+      tormenta: 0.52,
+      apocalip: 0.48,
+      trueno: 0.65
+    };
+    const LOOP_KEYS = ['gaviotas', 'viento', 'lluvia', 'tormenta', 'apocalip'];
+
+    const loops = {};
+    const fades = {};
+    const lastWant = {};
+    let started = false;
+    let lastSoundOn = true;
+    let hadLluvia = false;
+    let hadApocalipsis = false;
+
+    function track(key) {
+      if (!loops[key]) {
+        const a = new Audio(PATHS[key]);
+        a.loop = true;
+        a.preload = 'auto';
+        a.volume = 0;
+        loops[key] = a;
+      }
+      return loops[key];
+    }
+
+    function cancelFade(key) {
+      if (fades[key]) {
+        cancelAnimationFrame(fades[key]);
+        fades[key] = 0;
+      }
+    }
+
+    function hardStop(key) {
+      const el = loops[key];
+      if (!el) return;
+      cancelFade(key);
+      lastWant[key] = false;
+      el.pause();
+      try { el.currentTime = 0; } catch (_) {}
+      el.volume = 0;
+    }
+
+    function fadeOut(key, ms) {
+      const el = loops[key];
+      if (!el || el.paused && el.volume <= 0.01) return;
+      cancelFade(key);
+      const start = el.volume;
+      const t0 = performance.now();
+      const dur = Math.max(0, ms);
+
+      function step(now) {
+        const p = dur === 0 ? 1 : Math.min(1, (now - t0) / dur);
+        el.volume = start * (1 - p);
+        if (p < 1) {
+          fades[key] = requestAnimationFrame(step);
+          return;
+        }
+        fades[key] = 0;
+        hardStop(key);
+      }
+      fades[key] = requestAnimationFrame(step);
+    }
+
+    function startFresh(key, volume) {
+      const el = track(key);
+      cancelFade(key);
+      lastWant[key] = true;
+      el.loop = true;
+      try { el.currentTime = 0; } catch (_) {}
+      el.volume = volume;
+
+      const tryPlay = () => {
+        const p = el.play();
+        if (p && typeof p.then === 'function') {
+          p.catch(() => {
+            el.load();
+            el.play().catch(() => {});
+          });
+        }
+      };
+
+      if (el.readyState >= 2) tryPlay();
+      else el.addEventListener('canplay', tryPlay, { once: true });
+    }
+
+    function applyTrack(key, shouldPlay, volume, cutMs) {
+      const was = !!lastWant[key];
+      if (!shouldPlay) {
+        if (was) fadeOut(key, cutMs);
+        else hardStop(key);
+        return;
+      }
+      if (!was) {
+        if (loops[key] && !loops[key].paused) hardStop(key);
+        startFresh(key, volume);
+      }
+    }
+
+    function playThunderOnce(loud) {
+      if (!lastSoundOn) return;
+      const t = new Audio(PATHS.trueno);
+      t.loop = false;
+      t.volume = loud ? LEVELS.trueno : LEVELS.trueno * 0.88;
+      try { t.currentTime = 0; } catch (_) {}
+      const p = t.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          t.load();
+          t.play().catch(() => {});
+        });
+      }
+    }
+
+    function buildWant(opts) {
+      const { sol, viento, lluvia, apocalipsis, soundOn } = opts;
+      if (!soundOn) {
+        return { gaviotas: false, viento: false, lluvia: false, tormenta: false, apocalip: false };
+      }
+      if (apocalipsis) {
+        return {
+          gaviotas: false,
+          viento: !!viento,
+          lluvia: true,
+          tormenta: true,
+          apocalip: true
+        };
+      }
+      return {
+        gaviotas: !!sol,
+        viento: !!viento,
+        lluvia: !!lluvia,
+        tormenta: false,
+        apocalip: false
+      };
+    }
+
+    function pauseAll() {
+      LOOP_KEYS.forEach(hardStop);
+      hadLluvia = false;
+      hadApocalipsis = false;
+    }
+
+    async function init() {
+      if (started) return;
+      LOOP_KEYS.forEach(track);
+      started = true;
+    }
+
+    function sync(opts) {
+      if (!started) return;
+      lastSoundOn = opts.soundOn;
+
+      if (!opts.soundOn) {
+        pauseAll();
+        return;
+      }
+
+      const want = buildWant(opts);
+      const lluviaNow = want.lluvia && !opts.apocalipsis;
+      const apocNow = opts.apocalipsis;
+
+      if (lluviaNow && !hadLluvia) playThunderOnce(false);
+      if (apocNow && !hadApocalipsis) playThunderOnce(true);
+      hadLluvia = lluviaNow || (apocNow && want.lluvia);
+      hadApocalipsis = apocNow;
+
+      const cutNormal = 220;
+      const cutToApoc = 90;
+
+      LOOP_KEYS.forEach(key => {
+        const play = want[key];
+        const was = !!lastWant[key];
+        const vol = key === 'viento' && apocNow ? LEVELS.viento * 0.75 : LEVELS[key];
+        const cut = (was && !play && key === 'gaviotas') ? cutToApoc : cutNormal;
+        applyTrack(key, play, vol, cut);
+      });
+    }
+
+    return { init, sync };
+  })();
+
+  function syncWeatherSound() {
+    WeatherAudio.sync({
+      sol: state.sol,
+      viento: state.viento,
+      lluvia: state.lluvia,
+      apocalipsis: apocalipsisActive,
+      soundOn: soundEnabled
+    });
+  }
 
   // ─── REGLAS: el toggle activado manda, deriva el resto ───
   function applyRules(key, isActive) {
@@ -459,6 +678,10 @@
         state.sol = false;
         state.nubes = true;
         state.lluvia = true;
+      }
+      // Al desactivar nubes: siempre activar viento
+      if (key === 'nubes') {
+        state.viento = true;
       }
     }
   }
@@ -599,6 +822,8 @@
     else if (state.sol && state.viento) status.textContent = messages.sol;
     else if (state.viento) status.textContent = messages.viento;
     else status.textContent = messages.default;
+
+    void WeatherAudio.init().then(() => syncWeatherSound());
   }
 
   // ─── MODAL ───
@@ -651,7 +876,23 @@
     const btn = document.getElementById('anim-toggle');
     btn.textContent = animationsEnabled ? '✨' : '🚫';
     btn.title = animationsEnabled ? 'Desactivar animaciones' : 'Activar animaciones';
+    btn.setAttribute('aria-label', btn.title);
   });
+
+  const soundBtn = document.getElementById('sound-toggle');
+  function updateSoundUi() {
+    soundBtn.textContent = soundEnabled ? '🔊' : '🔇';
+    const t = soundEnabled ? 'Silenciar sonido ambiental' : 'Activar sonido ambiental';
+    soundBtn.title = soundEnabled ? 'Sonido ambiental activo' : 'Sonido desactivado';
+    soundBtn.setAttribute('aria-label', t);
+    soundBtn.classList.toggle('sound-off', !soundEnabled);
+  }
+  soundBtn.addEventListener('click', () => {
+    soundEnabled = !soundEnabled;
+    updateSoundUi();
+    syncWeatherSound();
+  });
+  updateSoundUi();
 
   function triggerGlitch() {
     if (!animationsEnabled || !apocalipsisActive) return;
@@ -670,8 +911,8 @@
     document.getElementById('toggle-list').style.pointerEvents = 'none';
     document.getElementById('toggle-list').style.opacity = '0.5';
 
-    // Fase 1 (0-5s): buen tiempo — apocalipsisActive sigue false, se pinta sol+viento
-    state.sol = true; state.viento = true;
+    // Fase 1 (0-5s): solo sol (único caso sin viento) — gaviotas; al pasar a fase 2 se cortan
+    state.sol = true; state.viento = false;
     state.lluvia = false; state.nubes = false; state.niebla = false; state.tresdia = false;
     render();
 
