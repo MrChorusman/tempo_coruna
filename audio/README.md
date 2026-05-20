@@ -13,4 +13,4 @@ Archivos usados por `tiempo-coruna.html`:
 
 Todos los bucles se mezclan según el estado de los interruptores. El trueno no hace bucle: suena **una sola vez** al activar la lluvia (o al entrar en el apocalipsis).
 
-La reproducción usa **Web Audio API** (decodificación previa de los archivos) para cortar y arrancar pistas de forma fiable en móviles. Hace falta al menos un toque en el panel para desbloquear el audio en iOS/Android.
+En **móvil** se usa `<audio>` HTML (corte inmediato al cambiar). En escritorio, Web Audio si el navegador lo permite. Hace falta **un toque** en la página para desbloquear el audio (iOS/Android).

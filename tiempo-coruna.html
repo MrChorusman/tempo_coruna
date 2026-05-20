@@ -461,17 +461,26 @@
     };
     const LOOP_KEYS = ['gaviotas', 'viento', 'lluvia', 'tormenta', 'apocalip'];
     const LOAD_KEYS = [...LOOP_KEYS, 'trueno'];
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
     let ctx = null;
     let master = null;
     let buffers = {};
-    const playing = {};
-    let initPromise = null;
+    const webPlaying = {};
+    const htmlEls = {};
+    const htmlPlaying = {};
+    let engine = 'html';
+    let unlocked = false;
+    let loadPromise = null;
     let lastSoundOn = true;
     let hadLluvia = false;
     let hadApocalipsis = false;
     let pendingOpts = null;
     let flushScheduled = false;
+
+    function audioUrl(path) {
+      return new URL(path, window.location.href).href;
+    }
 
     function buildWant(opts) {
       const { sol, viento, lluvia, apocalipsis, soundOn } = opts;
@@ -496,24 +505,74 @@
       };
     }
 
-    function stopLoop(key) {
-      const node = playing[key];
+    function ensureHtmlEl(key) {
+      if (!htmlEls[key]) {
+        const a = new Audio(audioUrl(PATHS[key]));
+        a.loop = true;
+        a.preload = 'auto';
+        a.setAttribute('playsinline', '');
+        a.volume = 0;
+        htmlEls[key] = a;
+      }
+      return htmlEls[key];
+    }
+
+    /** Debe llamarse de forma síncrona dentro del gesto (touch/click). */
+    function unlock() {
+      if (!unlocked) {
+        unlocked = true;
+        LOOP_KEYS.forEach(ensureHtmlEl);
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) {
+          ctx = new AC();
+          master = ctx.createGain();
+          master.gain.value = 1;
+          master.connect(ctx.destination);
+          try {
+            const silent = ctx.createBuffer(1, 1, 22050);
+            const ping = ctx.createBufferSource();
+            ping.buffer = silent;
+            ping.connect(master);
+            ping.start(0);
+          } catch (_) {}
+        }
+      }
+      if (ctx && ctx.state === 'suspended') void ctx.resume();
+    }
+
+    function webReady() {
+      return engine === 'web' && ctx && master && LOOP_KEYS.some(k => buffers[k]);
+    }
+
+    function stopWeb(key) {
+      const node = webPlaying[key];
       if (!node) return;
       try { node.source.stop(0); } catch (_) {}
-      try {
-        node.source.disconnect();
-        node.gain.disconnect();
-      } catch (_) {}
-      playing[key] = null;
+      try { node.source.disconnect(); node.gain.disconnect(); } catch (_) {}
+      webPlaying[key] = null;
+    }
+
+    function stopHtml(key) {
+      const el = htmlEls[key];
+      if (!el) return;
+      el.pause();
+      try { el.currentTime = 0; } catch (_) {}
+      el.volume = 0;
+      htmlPlaying[key] = false;
+    }
+
+    function stopLoop(key) {
+      stopWeb(key);
+      stopHtml(key);
     }
 
     function stopAllLoops() {
       LOOP_KEYS.forEach(stopLoop);
     }
 
-    function startLoop(key, volume) {
-      if (!ctx || !master || !buffers[key]) return;
-      stopLoop(key);
+    function startWeb(key, volume) {
+      if (!buffers[key]) return false;
+      stopWeb(key);
       const source = ctx.createBufferSource();
       source.buffer = buffers[key];
       source.loop = true;
@@ -524,68 +583,101 @@
       try {
         source.start(0);
       } catch (_) {
-        return;
+        return false;
       }
-      playing[key] = { source, gain };
-    }
-
-    function playThunderOnce(loud) {
-      if (!ctx || !master || !buffers.trueno || !lastSoundOn) return;
-      const source = ctx.createBufferSource();
-      source.buffer = buffers.trueno;
-      const gain = ctx.createGain();
-      gain.gain.value = loud ? LEVELS.trueno : LEVELS.trueno * 0.88;
-      source.connect(gain);
-      gain.connect(master);
-      source.onended = () => {
-        try {
-          source.disconnect();
-          gain.disconnect();
-        } catch (_) {}
-      };
-      try { source.start(0); } catch (_) {}
-    }
-
-    function setMasterMuted(muted) {
-      if (!master || !ctx) return;
-      const v = muted ? 0 : 1;
-      master.gain.cancelScheduledValues(ctx.currentTime);
-      master.gain.setValueAtTime(v, ctx.currentTime);
-    }
-
-    async function loadBuffers() {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return false;
-      ctx = new AC();
-      master = ctx.createGain();
-      master.gain.value = 1;
-      master.connect(ctx.destination);
-
-      const base = new URL('.', window.location.href).href;
-      await Promise.all(LOAD_KEYS.map(async (key) => {
-        try {
-          const res = await fetch(new URL(PATHS[key], base).href);
-          if (!res.ok) throw new Error(res.status);
-          const ab = await res.arrayBuffer();
-          buffers[key] = await ctx.decodeAudioData(ab);
-        } catch (e) {
-          console.warn('[WeatherAudio] No se pudo cargar', key, e);
-        }
-      }));
-
-      await ctx.resume().catch(() => {});
-      if (pendingOpts) scheduleFlush();
+      webPlaying[key] = { source, gain };
       return true;
     }
 
-    async function init() {
-      if (ctx && buffers.gaviotas) {
-        if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+    function startHtml(key, volume) {
+      const el = ensureHtmlEl(key);
+      stopHtml(key);
+      el.loop = true;
+      el.volume = volume;
+      try { el.currentTime = 0; } catch (_) {}
+      htmlPlaying[key] = true;
+      const p = el.play();
+      if (p && typeof p.then === 'function') {
+        p.catch(() => {
+          el.load();
+          el.play().catch(() => {});
+        });
+      }
+      return true;
+    }
+
+    function startLoop(key, volume) {
+      if (webReady() && buffers[key]) {
+        if (startWeb(key, volume)) {
+          stopHtml(key);
+          return;
+        }
+      }
+      startHtml(key, volume);
+      stopWeb(key);
+    }
+
+    function playThunderOnce(loud) {
+      if (!lastSoundOn) return;
+      const vol = loud ? LEVELS.trueno : LEVELS.trueno * 0.88;
+      if (webReady() && buffers.trueno) {
+        const source = ctx.createBufferSource();
+        source.buffer = buffers.trueno;
+        const gain = ctx.createGain();
+        gain.gain.value = vol;
+        source.connect(gain);
+        gain.connect(master);
+        source.onended = () => {
+          try { source.disconnect(); gain.disconnect(); } catch (_) {}
+        };
+        try { source.start(0); } catch (_) {}
         return;
       }
-      if (initPromise) return initPromise;
-      initPromise = loadBuffers();
-      return initPromise;
+      const t = new Audio(audioUrl(PATHS.trueno));
+      t.volume = vol;
+      t.play().catch(() => {});
+    }
+
+    function setMasterMuted(muted) {
+      if (master && ctx) {
+        master.gain.setValueAtTime(muted ? 0 : 1, ctx.currentTime);
+      }
+      LOOP_KEYS.forEach(key => {
+        const el = htmlEls[key];
+        if (!el || !htmlPlaying[key]) return;
+        el.volume = muted ? 0 : (LEVELS[key] || 0.5);
+      });
+    }
+
+    async function loadAssets() {
+      if (isMobile || !ctx) {
+        engine = 'html';
+        if (pendingOpts) scheduleFlush();
+        return;
+      }
+      {
+        await Promise.all(LOAD_KEYS.map(async (key) => {
+          try {
+            const res = await fetch(audioUrl(PATHS[key]));
+            if (!res.ok) throw new Error(String(res.status));
+            const ab = await res.arrayBuffer();
+            const copy = ab.slice(0);
+            buffers[key] = await ctx.decodeAudioData(copy);
+          } catch (e) {
+            console.warn('[WeatherAudio]', key, e);
+          }
+        }));
+        if (ctx) await ctx.resume().catch(() => {});
+        const decoded = LOOP_KEYS.filter(k => buffers[k]).length;
+        engine = (!isMobile && decoded >= 3 && ctx && ctx.state === 'running') ? 'web' : 'html';
+      }
+      if (pendingOpts) scheduleFlush();
+    }
+
+    function ensureLoaded() {
+      unlock();
+      if (!loadPromise) loadPromise = loadAssets();
+      return loadPromise;
     }
 
     function applyWant(want, apocalipsis) {
@@ -593,16 +685,17 @@
         if (!want[key]) stopLoop(key);
       });
       LOOP_KEYS.forEach(key => {
-        if (!want[key] || playing[key]) return;
+        if (!want[key]) return;
         const vol = key === 'viento' && apocalipsis ? LEVELS.viento * 0.75 : LEVELS[key];
-        startLoop(key, vol);
+        const active = webPlaying[key] || htmlPlaying[key];
+        if (!active) startLoop(key, vol);
       });
     }
 
     function flushSync() {
       flushScheduled = false;
       const opts = pendingOpts;
-      if (!opts || !ctx || !master) return;
+      if (!opts || !unlocked) return;
       pendingOpts = null;
 
       lastSoundOn = opts.soundOn;
@@ -642,27 +735,22 @@
       scheduleFlush();
     }
 
-    return { init, sync };
+    return { unlock, ensureLoaded, sync };
   })();
 
-  let audioReady = null;
-  function ensureAudioReady() {
-    if (!audioReady) {
-      audioReady = WeatherAudio.init().catch(() => {});
-    }
-    return audioReady;
+  function syncWeatherSound() {
+    WeatherAudio.sync({
+      sol: state.sol,
+      viento: state.viento,
+      lluvia: state.lluvia,
+      apocalipsis: apocalipsisActive,
+      soundOn: soundEnabled
+    });
   }
 
-  function syncWeatherSound() {
-    ensureAudioReady().then(() => {
-      WeatherAudio.sync({
-        sol: state.sol,
-        viento: state.viento,
-        lluvia: state.lluvia,
-        apocalipsis: apocalipsisActive,
-        soundOn: soundEnabled
-      });
-    });
+  function onAudioGesture() {
+    WeatherAudio.unlock();
+    WeatherAudio.ensureLoaded().then(() => syncWeatherSound());
   }
 
   // ─── REGLAS: el toggle activado manda, deriva el resto ───
@@ -1044,11 +1132,10 @@
     render();
   });
 
-  function unlockAudioOnGesture() {
-    ensureAudioReady().then(() => syncWeatherSound());
-  }
-  document.getElementById('toggle-list').addEventListener('click', unlockAudioOnGesture, { passive: true });
-  document.getElementById('sound-toggle').addEventListener('click', unlockAudioOnGesture, { passive: true });
+  document.getElementById('toggle-list').addEventListener('pointerdown', onAudioGesture, { capture: true });
+  document.getElementById('toggle-list').addEventListener('click', syncWeatherSound);
+  document.getElementById('sound-toggle').addEventListener('pointerdown', onAudioGesture, { capture: true });
+  document.getElementById('sound-toggle').addEventListener('click', syncWeatherSound);
 
   render();
 </script>
