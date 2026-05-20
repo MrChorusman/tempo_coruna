@@ -460,113 +460,18 @@
       trueno: 0.65
     };
     const LOOP_KEYS = ['gaviotas', 'viento', 'lluvia', 'tormenta', 'apocalip'];
+    const LOAD_KEYS = [...LOOP_KEYS, 'trueno'];
 
-    const loops = {};
-    const fades = {};
-    const lastWant = {};
-    let started = false;
+    let ctx = null;
+    let master = null;
+    let buffers = {};
+    const playing = {};
+    let initPromise = null;
     let lastSoundOn = true;
     let hadLluvia = false;
     let hadApocalipsis = false;
-
-    function track(key) {
-      if (!loops[key]) {
-        const a = new Audio(PATHS[key]);
-        a.loop = true;
-        a.preload = 'auto';
-        a.volume = 0;
-        loops[key] = a;
-      }
-      return loops[key];
-    }
-
-    function cancelFade(key) {
-      if (fades[key]) {
-        cancelAnimationFrame(fades[key]);
-        fades[key] = 0;
-      }
-    }
-
-    function hardStop(key) {
-      const el = loops[key];
-      if (!el) return;
-      cancelFade(key);
-      lastWant[key] = false;
-      el.pause();
-      try { el.currentTime = 0; } catch (_) {}
-      el.volume = 0;
-    }
-
-    function fadeOut(key, ms) {
-      const el = loops[key];
-      if (!el || el.paused && el.volume <= 0.01) return;
-      cancelFade(key);
-      const start = el.volume;
-      const t0 = performance.now();
-      const dur = Math.max(0, ms);
-
-      function step(now) {
-        const p = dur === 0 ? 1 : Math.min(1, (now - t0) / dur);
-        el.volume = start * (1 - p);
-        if (p < 1) {
-          fades[key] = requestAnimationFrame(step);
-          return;
-        }
-        fades[key] = 0;
-        hardStop(key);
-      }
-      fades[key] = requestAnimationFrame(step);
-    }
-
-    function startFresh(key, volume) {
-      const el = track(key);
-      cancelFade(key);
-      lastWant[key] = true;
-      el.loop = true;
-      try { el.currentTime = 0; } catch (_) {}
-      el.volume = volume;
-
-      const tryPlay = () => {
-        const p = el.play();
-        if (p && typeof p.then === 'function') {
-          p.catch(() => {
-            el.load();
-            el.play().catch(() => {});
-          });
-        }
-      };
-
-      if (el.readyState >= 2) tryPlay();
-      else el.addEventListener('canplay', tryPlay, { once: true });
-    }
-
-    function applyTrack(key, shouldPlay, volume, cutMs) {
-      const was = !!lastWant[key];
-      if (!shouldPlay) {
-        if (was) fadeOut(key, cutMs);
-        else hardStop(key);
-        return;
-      }
-      if (!was) {
-        if (loops[key] && !loops[key].paused) hardStop(key);
-        startFresh(key, volume);
-      }
-    }
-
-    function playThunderOnce(loud) {
-      if (!lastSoundOn) return;
-      const t = new Audio(PATHS.trueno);
-      t.loop = false;
-      t.volume = loud ? LEVELS.trueno : LEVELS.trueno * 0.88;
-      try { t.currentTime = 0; } catch (_) {}
-      const p = t.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(() => {
-          t.load();
-          t.play().catch(() => {});
-        });
-      }
-    }
+    let pendingOpts = null;
+    let flushScheduled = false;
 
     function buildWant(opts) {
       const { sol, viento, lluvia, apocalipsis, soundOn } = opts;
@@ -591,58 +496,172 @@
       };
     }
 
-    function pauseAll() {
-      LOOP_KEYS.forEach(hardStop);
-      hadLluvia = false;
-      hadApocalipsis = false;
+    function stopLoop(key) {
+      const node = playing[key];
+      if (!node) return;
+      try { node.source.stop(0); } catch (_) {}
+      try {
+        node.source.disconnect();
+        node.gain.disconnect();
+      } catch (_) {}
+      playing[key] = null;
+    }
+
+    function stopAllLoops() {
+      LOOP_KEYS.forEach(stopLoop);
+    }
+
+    function startLoop(key, volume) {
+      if (!ctx || !master || !buffers[key]) return;
+      stopLoop(key);
+      const source = ctx.createBufferSource();
+      source.buffer = buffers[key];
+      source.loop = true;
+      const gain = ctx.createGain();
+      gain.gain.value = volume;
+      source.connect(gain);
+      gain.connect(master);
+      try {
+        source.start(0);
+      } catch (_) {
+        return;
+      }
+      playing[key] = { source, gain };
+    }
+
+    function playThunderOnce(loud) {
+      if (!ctx || !master || !buffers.trueno || !lastSoundOn) return;
+      const source = ctx.createBufferSource();
+      source.buffer = buffers.trueno;
+      const gain = ctx.createGain();
+      gain.gain.value = loud ? LEVELS.trueno : LEVELS.trueno * 0.88;
+      source.connect(gain);
+      gain.connect(master);
+      source.onended = () => {
+        try {
+          source.disconnect();
+          gain.disconnect();
+        } catch (_) {}
+      };
+      try { source.start(0); } catch (_) {}
+    }
+
+    function setMasterMuted(muted) {
+      if (!master || !ctx) return;
+      const v = muted ? 0 : 1;
+      master.gain.cancelScheduledValues(ctx.currentTime);
+      master.gain.setValueAtTime(v, ctx.currentTime);
+    }
+
+    async function loadBuffers() {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ctx = new AC();
+      master = ctx.createGain();
+      master.gain.value = 1;
+      master.connect(ctx.destination);
+
+      const base = new URL('.', window.location.href).href;
+      await Promise.all(LOAD_KEYS.map(async (key) => {
+        try {
+          const res = await fetch(new URL(PATHS[key], base).href);
+          if (!res.ok) throw new Error(res.status);
+          const ab = await res.arrayBuffer();
+          buffers[key] = await ctx.decodeAudioData(ab);
+        } catch (e) {
+          console.warn('[WeatherAudio] No se pudo cargar', key, e);
+        }
+      }));
+
+      await ctx.resume().catch(() => {});
+      if (pendingOpts) scheduleFlush();
+      return true;
     }
 
     async function init() {
-      if (started) return;
-      LOOP_KEYS.forEach(track);
-      started = true;
+      if (ctx && buffers.gaviotas) {
+        if (ctx.state === 'suspended') await ctx.resume().catch(() => {});
+        return;
+      }
+      if (initPromise) return initPromise;
+      initPromise = loadBuffers();
+      return initPromise;
     }
 
-    function sync(opts) {
-      if (!started) return;
+    function applyWant(want, apocalipsis) {
+      LOOP_KEYS.forEach(key => {
+        if (!want[key]) stopLoop(key);
+      });
+      LOOP_KEYS.forEach(key => {
+        if (!want[key] || playing[key]) return;
+        const vol = key === 'viento' && apocalipsis ? LEVELS.viento * 0.75 : LEVELS[key];
+        startLoop(key, vol);
+      });
+    }
+
+    function flushSync() {
+      flushScheduled = false;
+      const opts = pendingOpts;
+      if (!opts || !ctx || !master) return;
+      pendingOpts = null;
+
       lastSoundOn = opts.soundOn;
 
       if (!opts.soundOn) {
-        pauseAll();
+        stopAllLoops();
+        setMasterMuted(true);
+        hadLluvia = false;
+        hadApocalipsis = false;
         return;
       }
+
+      setMasterMuted(false);
 
       const want = buildWant(opts);
       const lluviaNow = want.lluvia && !opts.apocalipsis;
       const apocNow = opts.apocalipsis;
 
+      applyWant(want, apocNow);
+
       if (lluviaNow && !hadLluvia) playThunderOnce(false);
       if (apocNow && !hadApocalipsis) playThunderOnce(true);
-      hadLluvia = lluviaNow || (apocNow && want.lluvia);
+      hadLluvia = lluviaNow;
       hadApocalipsis = apocNow;
 
-      const cutNormal = 220;
-      const cutToApoc = 90;
+      if (pendingOpts) scheduleFlush();
+    }
 
-      LOOP_KEYS.forEach(key => {
-        const play = want[key];
-        const was = !!lastWant[key];
-        const vol = key === 'viento' && apocNow ? LEVELS.viento * 0.75 : LEVELS[key];
-        const cut = (was && !play && key === 'gaviotas') ? cutToApoc : cutNormal;
-        applyTrack(key, play, vol, cut);
-      });
+    function scheduleFlush() {
+      if (flushScheduled) return;
+      flushScheduled = true;
+      queueMicrotask(flushSync);
+    }
+
+    function sync(opts) {
+      pendingOpts = opts;
+      scheduleFlush();
     }
 
     return { init, sync };
   })();
 
+  let audioReady = null;
+  function ensureAudioReady() {
+    if (!audioReady) {
+      audioReady = WeatherAudio.init().catch(() => {});
+    }
+    return audioReady;
+  }
+
   function syncWeatherSound() {
-    WeatherAudio.sync({
-      sol: state.sol,
-      viento: state.viento,
-      lluvia: state.lluvia,
-      apocalipsis: apocalipsisActive,
-      soundOn: soundEnabled
+    ensureAudioReady().then(() => {
+      WeatherAudio.sync({
+        sol: state.sol,
+        viento: state.viento,
+        lluvia: state.lluvia,
+        apocalipsis: apocalipsisActive,
+        soundOn: soundEnabled
+      });
     });
   }
 
@@ -823,7 +842,7 @@
     else if (state.viento) status.textContent = messages.viento;
     else status.textContent = messages.default;
 
-    void WeatherAudio.init().then(() => syncWeatherSound());
+    syncWeatherSound();
   }
 
   // ─── MODAL ───
@@ -1024,6 +1043,12 @@
     applyRules(key, state[key]);
     render();
   });
+
+  function unlockAudioOnGesture() {
+    ensureAudioReady().then(() => syncWeatherSound());
+  }
+  document.getElementById('toggle-list').addEventListener('click', unlockAudioOnGesture, { passive: true });
+  document.getElementById('sound-toggle').addEventListener('click', unlockAudioOnGesture, { passive: true });
 
   render();
 </script>

@@ -12,3 +12,5 @@ Archivos usados por `tiempo-coruna.html`:
 | `apocalip.m4a` | Música épica en el **apocalipsis** (junto con lluvia, tormenta y truenos) |
 
 Todos los bucles se mezclan según el estado de los interruptores. El trueno no hace bucle: suena **una sola vez** al activar la lluvia (o al entrar en el apocalipsis).
+
+La reproducción usa **Web Audio API** (decodificación previa de los archivos) para cortar y arrancar pistas de forma fiable en móviles. Hace falta al menos un toque en el panel para desbloquear el audio en iOS/Android.
