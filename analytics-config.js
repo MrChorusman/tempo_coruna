@@ -5,12 +5,12 @@
  * provider: 'cloudflare' | 'plausible' | 'ga4' | 'none'
  */
 window.TEMPO_ANALYTICS = {
-  provider: 'none',
+  provider: 'cloudflare',
 
   // Gratis, sin cookies, aguanta mucho tráfico — recomendado si crece el viral
   // Dashboard: https://dash.cloudflare.com → Analytics & Logs → Web Analytics → Add site
   cloudflare: {
-    token: '' // pega aquí el token del beacon (ej. "a1b2c3d4-...")
+    token: 'e2303cb0a4d64bac92c956cad28d1daa'
   },
 
   // Privado, panel claro; de pago tras prueba según volumen
