@@ -949,6 +949,13 @@
     WeatherAudio.ensureLoaded().then(() => syncWeatherSound());
   }
 
+  // El viento se lleva la niebla: no pueden coexistir (el viento gana)
+  function enforceWeatherExclusions() {
+    if (state.niebla && state.viento) {
+      state.niebla = false;
+    }
+  }
+
   // ─── REGLAS: el toggle activado manda, deriva el resto ───
   function applyRules(key, isActive) {
     if (isActive) {
@@ -992,11 +999,13 @@
         state.nubes = true;
         state.lluvia = true;
       }
-      // Al desactivar nubes: siempre activar viento
+      // Al desactivar nubes: siempre activar viento (y la niebla no aguanta)
       if (key === 'nubes') {
         state.viento = true;
+        state.niebla = false;
       }
     }
+    enforceWeatherExclusions();
   }
 
   // ─── MENSAJES ───
@@ -1377,6 +1386,7 @@
       const shuffled = chaosKeys.sort(() => Math.random() - 0.5);
       const pick = 1 + Math.round(Math.random());
       for (let i = 0; i < pick; i++) state[shuffled[i]] = true;
+      enforceWeatherExclusions();
 
       render();
 
